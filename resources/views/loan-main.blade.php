@@ -71,6 +71,7 @@
                     <p style="margin: 0px;"><strong>Loan Date:</strong> {{ $loan['loan_date'] }}</p>
                     <p><strong>Return Date:</strong> {{ $loan['return_date'] }}</p>
                     <p><strong>Status:</strong> {{ $loan['status'] }}</p>
+
                     <button type="button" class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#reviewBookModal{{ $loan['id'] }}">
                         Review Book
                     </button>
@@ -83,26 +84,22 @@
                                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
-                                    <p style="margin: 0px;"><strong>Rate the book:</strong></p>
-                                    <div class="stars">
-                                        <span class="star" data-rating="1">&#9733;</span>
-                                        <span class="star" data-rating="2">&#9733;</span>
-                                        <span class="star" data-rating="3">&#9733;</span>
-                                        <span class="star" data-rating="4">&#9733;</span>
-                                        <span class="star" data-rating="5">&#9733;</span>
-                                    </div>
-                                    <p><strong>Leave a comment:</strong></p>
-                                    <textarea id="comment" name="comment" class="form-control" rows="4" placeholder="Your comment here..."></textarea>
-                                </div>
-                                <div class="modal-footer">
-                                    <form id="reviewForm" action="{{ route('review.submit', $loan['id']) }}" method="POST">
+                                    <form action="{{ route('review.submit', $loan['id']) }}" method="POST">
                                         @csrf
-                                        <input type="hidden" id="rating" name="rating" value="">
                                         <input type="hidden" name="book_id" value="{{ $loan['book_id'] }}">
-                                        <input type="hidden" id="hiddenComment" name="comment" value="">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        
+                                        <p style="margin:0px;"><strong>Rate the book:</strong></p>
+                                        <input type="number" name="rating" min="1" max="5" step="1" class="form-control mb-2" placeholder="1-5" required>
+
+                                        <p style="margin:0px;"><strong>Leave a comment:</strong></p>
+                                        <textarea name="comment" class="form-control" rows="4" placeholder="Your comment here..." required></textarea>
+
+                                        <br>
                                         <button type="submit" class="btn btn-outline-dark">Submit Review</button>
                                     </form>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                 </div>
                             </div>
                         </div>
@@ -117,42 +114,20 @@
 @push('scripts')
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const stars = document.querySelectorAll('.star');
-        let selectedRating = 0;
-
-        stars.forEach(star => {
-            star.addEventListener('click', () => {
-                selectedRating = star.getAttribute('data-rating');
-                document.getElementById('rating').value = selectedRating;
-                stars.forEach(s => {
-                    s.classList.remove('selected');
+        document.addEventListener('DOMContentLoaded', function () {
+            const cancelButtons = document.querySelectorAll('[data-bs-dismiss="modal"]');
+            cancelButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const ratings = document.querySelectorAll('[id^="rating"]');
+                    ratings.forEach(rating => {
+                        rating.value = '';
+                    });
+                    const comments = document.querySelectorAll('[id^="comment"]');
+                    comments.forEach(comment => {
+                        comment.value = '';
+                    });
                 });
-                for (let i = 0; i < selectedRating; i++) {
-                    stars[i].classList.add('selected');
-                }
             });
         });
-
-        const reviewForm = document.getElementById('reviewForm');
-        reviewForm.addEventListener('submit', function() {
-            const commentText = document.getElementById('comment').value;
-            document.getElementById('hiddenComment').value = commentText;
-        });
     </script>
-
-    <style>
-        .star {
-            font-size: 30px;
-            color: #ddd;
-            cursor: pointer;
-        }
-
-        .star.selected {
-            color: gold;
-        }
-
-        .star:hover {
-            color: gold;
-        }
-    </style>
 @endpush
