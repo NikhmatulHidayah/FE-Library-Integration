@@ -27,6 +27,9 @@
                     <li class="nav-item">
                         <a class="nav-link {{ request()->is('loan', 'loan/*') ? 'active' : '' }}" href="{{ url('/loan') }}">Loan</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ request()->is('reservation', 'reservation/*') ? 'active' : '' }}" href="{{ url('/reservation') }}">Reservation</a>
+                    </li>
                 </ul>
                 <ul class="navbar-nav ms-auto">
                     @if (session('access_token'))
