@@ -79,14 +79,13 @@ class CatalogController extends Controller
         //dd($books);
         return view('catalog', ['books' => $books], ['name' => $name]);
     }
-
     public function show($id)
     {
-        $token = session('access_token');
+        $token = session('access_token');   
 
         if (!$token) {
             return redirect('/login');
-        }
+        }   
 
         try {
             JWTAuth::setToken($token);
@@ -96,14 +95,14 @@ class CatalogController extends Controller
             $role = $payload->get('role');
         } catch (\Exception $e) {
             return redirect('/login');
-        }
+        }   
 
         if ($role !== 'student') {
             return redirect('/logout');
-        }
+        }   
 
         try {
-            $query = '
+            $bookQuery = '
                 query {
                   getBookById(id: "' . $id . '") {
                     id
@@ -119,25 +118,55 @@ class CatalogController extends Controller
                     }
                   }
                 }
-            ';
-            
-            $response = Http::post('http://localhost:8082/graphql', [
-                'query' => $query
-            ]);
+            ';  
 
-            $data = $response->json();
+            $reviewQuery = '
+                query {
+                  getReviewByBookId(book_id: "' . $id . '") {
+                    id
+                    book_id
+                    user_id
+                    rating
+                    comment
+                    created_at
+                    updated_at
+                  }
+                }
+            ';  
 
-            if (isset($data['errors'])) {
+            $bookResponse = Http::post('http://localhost:8082/graphql', [
+                'query' => $bookQuery
+            ]); 
+
+            $bookData = $bookResponse->json();  
+
+            if (isset($bookData['errors'])) {
                 return abort(404, 'Book not found');
-            }
+            }   
 
-            $book = $data['data']['getBookById'];
-            //dd($book);
+            $book = $bookData['data']['getBookById'];   
 
-            return view('book_detail', ['name' => $name, 'book' => $book]);
+            $reviewResponse = Http::post('http://localhost:8089/graphql', [
+                'query' => $reviewQuery
+            ]); 
+
+            $reviewData = $reviewResponse->json();  
+
+            if (isset($reviewData['errors'])) {
+                $reviews = [];
+            } else {
+                $reviews = $reviewData['data']['getReviewByBookId'];
+            }   
+
+            return view('book_detail', [
+                'name' => $name,
+                'book' => $book,
+                'reviews' => $reviews
+            ]); 
 
         } catch (Exception $e) {
             return abort(500, 'Error fetching data: ' . $e->getMessage());
         }
     }
+
 }
