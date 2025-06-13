@@ -116,58 +116,6 @@ class LoanController extends Controller
             return back()->withErrors('Failed to submit loan request.');
         }
 
-        $bookQuery = '
-            query {
-                getBookById(id: "' . $id . '") {
-                    stock
-                    title
-                    author
-                    category
-                }
-            }
-        ';
-
-        $bookResponse = Http::post('http://localhost:8082/graphql', [
-            'query' => $bookQuery,
-        ]);
-
-        $bookData = $bookResponse->json();
-        $book = $bookData['data']['getBookById'] ?? null;
-
-        if (!$book) {
-            return back()->withErrors('Book data not found.');
-        }
-
-        $currentStock = $book['stock'];
-        $newStock = max(0, $currentStock - 1);
-
-        $updateMutation = '
-            mutation {
-                updateBook(id: ' . $id . ', input: {
-                    title: "' . addslashes($book['title']) . '",
-                    author: "' . addslashes($book['author']) . '",
-                    category: "' . addslashes($book['category']) . '",
-                    stock: ' . $newStock . '
-                }) {
-                    id
-                    title
-                    author
-                    category
-                    stock
-                }
-            }
-        ';
-
-        $updateResponse = Http::withToken($token)->post('http://localhost:8082/graphql', [
-            'query' => $updateMutation,
-        ]);
-
-        $updateResult = $updateResponse->json();
-
-        if (isset($updateResult['errors'])) {
-            return back()->withErrors('Loan submitted, but failed to update book stock.');
-        }
-
         return redirect('/')->with('success', 'Loan submitted successfully.');
     }
 
@@ -264,9 +212,14 @@ class LoanController extends Controller
         $response = Http::withToken($token)->post('http://localhost:8085/graphql', [
             'query' => '
                 mutation {
-                    updateLoanStatus(id: ' . $loanId . ', status: returned) {
+                    returnBook(id: ' . $loanId . ') {
                         id
+                        user_id
+                        book_id
+                        loan_date
                         status
+                        return_date
+                        created_at
                         updated_at
                     }
                 }
