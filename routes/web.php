@@ -8,6 +8,7 @@ use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\ReservationController;
 
 Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
@@ -30,6 +31,11 @@ Route::post('/admin/add/book/post', [AdminController::class, 'store'])->name('ad
 
 Route::get('/admin/catalog/book/{id}', [AdminController::class, 'show'])->name('book.detail');
 
+Route::get('/admin/loan', [AdminController::class, 'loan'])->name('admin.loan');
+
+Route::get('/admin/reservation', [AdminController::class, 'reservation'])->name('admin.reservation');
+Route::post('/admin/approve-reservation/{id}', [AdminController::class, 'approveReservation'])->name('admin.approveReservation');
+
 Route::get('/admin/catalog/book/{id}/edit', [AdminController::class, 'edit'])->name('book.edit');
 Route::post('/admin/catalog/book/{id}/update', [AdminController::class, 'update'])->name('book.update');
 Route::delete('/admin/catalog/book/{id}/delete', [AdminController::class, 'destroy'])->name('book.delete');
@@ -41,3 +47,6 @@ Route::post('/loan/book/{id}', [LoanController::class, 'submitLoan'])->name('loa
 Route::put('/loan/return/{loanId}', [LoanController::class, 'returnBook'])->name('loan.return');
 
 Route::post('/review/{loanId}', [ReviewController::class, 'submitReview'])->name('review.submit');
+
+Route::get('/reservation', [ReservationController::class, 'index'])->name('reservation.index');
+Route::post('/reservation/book/{id}', [ReservationController::class, 'createReservation']);
