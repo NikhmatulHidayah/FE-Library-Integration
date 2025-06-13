@@ -7,6 +7,7 @@ use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Http;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use GraphQL;
+use Carbon\Carbon;
 use Exception;
 
 
@@ -38,41 +39,125 @@ class AdminController extends Controller
     }
     public function showAdminHome()
     {
-        $query = '
-            query {
-                books {
-                    id
-                    title
-                    author
-                    category
-                    stock
-                    created_at
-                    updated_at
-                    images {
-                        id
-                        image_url
-                    }
-                }
-            }
-        ';
+        $token = session('access_token');
 
-        $response = Http::post('http://localhost:8082/graphql', [
-            'query' => $query,
-        ]);
-
-        $data = $response->json();
-
-        if (isset($data['errors'])) {
-            return abort(500, 'Failed to fetch books data.');
+        if (!$token) {
+            return redirect('/login');
         }
 
-        $books = $data['data']['books'];
+        try {
+            JWTAuth::setToken($token);
+            $payload = JWTAuth::getPayload();
+            $userId = $payload->get('id');
+            $name = $payload->get('name');
+            $role = $payload->get('role');
+        } catch (\Exception $e) {
+            return redirect('/login');
+        }
+
+        if ($role !== 'admin') {
+            return redirect('/logout');
+        }
+
+        $client = new Client();
+
+        $bookQuery = <<<GQL
+        query {
+            books {
+                id
+                title
+                author
+                category
+                stock
+                created_at
+                updated_at
+                images {
+                    id
+                    image_url
+                }
+            }
+        }
+        GQL;
+
+        $bookResponse = $client->post('http://localhost:8082/graphql', [
+            'json' => ['query' => $bookQuery]
+        ]);
+
+        $bookData = json_decode($bookResponse->getBody()->getContents(), true);
+        $books = $bookData['data']['books'];
 
         $totalStock = array_reduce($books, function ($carry, $book) {
             return $carry + $book['stock'];
         }, 0);
-        //dd($totalStock);
-        return view('admin.home', ['name' => 'Admin', 'totalStock' => $totalStock]);
+
+        $loanQuery = <<<GQL
+        query {
+            allLoans {
+                id
+                user_id
+                book_id
+                loan_date
+                return_date
+                status
+            }
+        }
+        GQL;
+
+        $loanResponse = $client->post('http://localhost:8085/graphql', [
+            'json' => ['query' => $loanQuery]
+        ]);
+        $loanData = json_decode($loanResponse->getBody()->getContents(), true);
+        $totalLoans = count($loanData['data']['allLoans']);
+
+        $userQuery = <<<GQL
+        query {
+            users {
+                id
+                name
+                email
+                role
+                created_at
+                updated_at
+            }
+        }
+        GQL;
+
+        $userResponse = $client->post('http://localhost:8081/graphql', [
+            'json' => ['query' => $userQuery]
+        ]);
+        $userData = json_decode($userResponse->getBody()->getContents(), true);
+        $totalMembers = count(array_filter($userData['data']['users'], function ($user) {
+            return $user['role'] === 'student';
+        }));
+
+        $reservationQuery = <<<GQL
+        query {
+            getAllReservations {
+                id
+                user_id
+                book_id
+                reservation_date
+                status
+                expire_date
+                created_at
+                updated_at
+            }
+        }
+        GQL;
+
+        $reservationResponse = $client->post('http://localhost:8087/graphql', [
+            'json' => ['query' => $reservationQuery]
+        ]);
+        $reservationData = json_decode($reservationResponse->getBody()->getContents(), true);
+        $totalReservations = count($reservationData['data']['getAllReservations']);
+
+        return view('admin.home', [
+            'name' => $name,
+            'totalStock' => $totalStock,
+            'totalLoans' => $totalLoans,
+            'totalMembers' => $totalMembers,
+            'totalReservations' => $totalReservations,
+        ]);
     }
 
     public function showAdminCatalog(Request $request){
@@ -397,4 +482,257 @@ class AdminController extends Controller
 
         return $name;
     }
+
+    public function loan()
+    {
+        $token = session('access_token');
+
+        if (!$token) {
+            return redirect('/login');
+        }
+
+        try {
+            JWTAuth::setToken($token);
+            $payload = JWTAuth::getPayload();
+            $userId = $payload->get('id');
+            $name = $payload->get('name');
+            $role = $payload->get('role');
+        } catch (\Exception $e) {
+            return redirect('/login');
+        }
+
+        if ($role !== 'admin') {
+            return redirect('/logout');
+        }
+
+        $response = Http::withToken($token)->post('http://localhost:8085/graphql', [
+            'query' => '
+                query {
+                    allLoans {
+                        id
+                        user_id
+                        book_id
+                        loan_date
+                        return_date
+                        status
+                    }
+                }
+            '
+        ]);
+
+        if ($response->failed()) {
+            return view('admin.loan', ['error' => 'Failed to fetch loan data.']);
+        }
+
+        $loans = $response->json()['data']['allLoans'];
+
+        $groupedLoans = [
+            'borrowed' => [],
+            'late' => [],
+            'returned' => [],
+        ];
+
+        $today = Carbon::now()->toDateString();
+
+        foreach ($loans as $loan) {
+            if ($loan['status'] !== 'returned' && Carbon::parse($loan['return_date'])->lt($today)) {
+                $this->updateLoanStatus($loan['id'], 'late');
+            }
+
+            $bookResponse = Http::post('http://localhost:8082/graphql', [
+                'query' => '
+                    query {
+                        getBookById(id: "' . $loan['book_id'] . '") {
+                            id
+                            title
+                        }
+                    }
+                '
+            ]);
+
+            $bookData = $bookResponse->json()['data']['getBookById'];
+            $loan['book_title'] = $bookData ? $bookData['title'] : 'Unknown Title';
+
+            $userResponse = Http::post('http://localhost:8081/graphql', [
+                'query' => '
+                    query {
+                        user(id: "' . $loan['user_id'] . '") {
+                            id
+                            name
+                        }
+                    }
+                '
+            ]);
+
+            $userData = $userResponse->json()['data']['user'];
+            $loan['user_name'] = $userData ? $userData['name'] : 'Unknown User';
+
+            if ($loan['status'] == 'borrowed') {
+                $groupedLoans['borrowed'][] = $loan;
+            } elseif ($loan['status'] == 'late') {
+                $groupedLoans['late'][] = $loan;
+            } elseif ($loan['status'] == 'returned') {
+                $groupedLoans['returned'][] = $loan;
+            }
+        }
+
+        return view('admin.loan', ['groupedLoans' => $groupedLoans, 'name' => $name]);
+    }
+
+    private function updateLoanStatus($loanId, $status)
+    {
+        $token = session('access_token');
+
+        $response = Http::withToken($token)->post('http://localhost:8085/graphql', [
+            'query' => '
+                mutation {
+                    updateLoanStatus(id: ' . $loanId . ', status: ' . $status . ') {
+                        id
+                        status
+                        updated_at
+                    }
+                }
+            '
+        ]);
+
+        if ($response->failed()) {
+            throw new \Exception("Failed to update loan status to " . $status);
+        }
+    }
+
+    public function reservation()
+    {
+        $token = session('access_token');
+
+        if (!$token) {
+            return redirect('/login');
+        }
+
+        try {
+            JWTAuth::setToken($token);
+            $payload = JWTAuth::getPayload();
+            $userId = $payload->get('id');
+            $name = $payload->get('name');
+            $role = $payload->get('role');
+        } catch (\Exception $e) {
+            return redirect('/login');
+        }
+
+        if ($role !== 'admin') {
+            return redirect('/logout');
+        }
+
+        $client = new Client();
+
+        $reservationQuery = <<<GQL
+        query {
+            getAllReservations {
+                id
+                user_id
+                book_id
+                reservation_date
+                status
+                expire_date
+                created_at
+                updated_at
+            }
+        }
+        GQL;
+
+        $reservationResponse = $client->post('http://localhost:8087/graphql', [
+            'json' => ['query' => $reservationQuery]
+        ]);
+
+        $reservationData = json_decode($reservationResponse->getBody()->getContents(), true);
+
+        if (isset($reservationData['errors'])) {
+            return abort(500, 'Failed to fetch reservation data.');
+        }
+
+        $reservations = $reservationData['data']['getAllReservations'];
+
+        $pendingReservations = array_filter($reservations, function ($reservation) {
+            return $reservation['status'] === 'pending';
+        });
+
+        foreach ($pendingReservations as &$reservation) {
+            $bookResponse = $client->post('http://localhost:8082/graphql', [
+                'json' => [
+                    'query' => '
+                        query {
+                            getBookById(id: "' . $reservation['book_id'] . '") {
+                                id
+                                title
+                                stock
+                            }
+                        }
+                    '
+                ]
+            ]);
+
+            $bookData = json_decode($bookResponse->getBody()->getContents(), true);
+
+            if (isset($bookData['data']['getBookById'])) {
+                $reservation['book_title'] = $bookData['data']['getBookById']['title'];
+                $reservation['book_stock'] = $bookData['data']['getBookById']['stock'];
+            } else {
+                $reservation['book_title'] = 'Unknown Title';
+                $reservation['book_stock'] = 0;
+            }
+        }
+
+        return view('admin.reservation', [
+            'reservations' => $pendingReservations,
+            'name' => $name
+        ]);
+    }
+
+    public function approveReservation($id)
+    {
+        $token = session('access_token');
+
+        if (!$token) {
+            return redirect('/login');
+        }
+
+        try {
+            JWTAuth::setToken($token);
+            $payload = JWTAuth::getPayload();
+            $userId = $payload->get('id');
+            $name = $payload->get('name');
+            $role = $payload->get('role');
+        } catch (\Exception $e) {
+            return redirect('/login');
+        }
+
+        if ($role !== 'admin') {
+            return redirect('/logout');
+        }
+
+        $mutationQuery = <<<GQL
+        mutation {
+            updateReservationStatus(id: $id, status: approved) {
+                id
+                status
+                updated_at
+            }
+        }
+        GQL;
+
+        $response = Http::withToken($token)->post('http://localhost:8087/graphql', [
+            'query' => $mutationQuery
+        ]);
+
+        if ($response->failed()) {
+            return redirect()->back()->with('error', 'Failed to approve reservation.');
+        }
+
+        $data = $response->json();
+        if (isset($data['data']['updateReservationStatus'])) {
+            return redirect()->back()->with('success', 'Reservation approved successfully!');
+        }
+
+        return redirect()->back()->with('error', 'Something went wrong.');
+    }
+
 }
