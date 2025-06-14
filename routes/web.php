@@ -9,6 +9,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ReservationController;
+use App\Http\Controllers\CourseController;
 
 Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
@@ -50,3 +51,6 @@ Route::post('/review/{loanId}', [ReviewController::class, 'submitReview'])->name
 
 Route::get('/reservation', [ReservationController::class, 'index'])->name('reservation.index');
 Route::post('/reservation/book/{id}', [ReservationController::class, 'createReservation']);
+
+Route::get('/course/all', [CourseController::class, 'index'])->name('course.index');
+Route::get('/course/{id}', [CourseController::class, 'show'])->name('course.show');
